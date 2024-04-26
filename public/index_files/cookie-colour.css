@@ -1,0 +1,65 @@
+
+
+.cookie_information .cookie_information__hex {
+    background: #281838;
+}
+
+.cookie_information .cookie_information__info a {
+    color: #FFF;
+}
+
+.admin_ui .cookie_information--bar .cookie_information__close:hover, .cookie_information--bar .cookie_information__close:hover {
+    background: #281838;
+}
+
+.admin_ui .cookie_information--shape .cookie_information__close,
+.admin_ui .cookie_information--shape .cookie_information__close,
+.cookie_information--shape .cookie_information__close,
+.cookie_information--shape .cookie_information__close,
+.admin_ui .cookie_information--overlay .cookie_information__close,
+.admin_ui .cookie_information--overlay .cookie_information__close,
+.cookie_information--overlay .cookie_information__close,
+.cookie_information--overlay .cookie_information__close {
+    color: #281838;
+}
+
+.admin_ui .cookie_information__button,
+.cookie_information__button {
+    background: #281838;
+    color: #FFFFFF;
+}
+
+.cookie_information__button:hover {
+    background: #20132D;
+    color: #FFFFFF !important;
+}
+
+
+.admin_ui .cookie_information__icon,
+.cookie_information__icon {
+    color: #FFFFFF;
+}
+
+/* Dialog */
+
+.cookie_ui .admin_dialog_title {
+    background: #281838;
+    color: #FFFFFF;
+}
+.cookie_ui .admin_dialog_box .admin_dialog_button-dialog_close {
+    color: #FFFFFF;
+}
+.cookie_ui .admin_dialog_buttons .admin_dialog_button {
+    
+}
+.cookie_ui .admin_dialog_buttons .admin_dialog_button-primary {
+    background: #281838;
+    color: #FFFFFF;
+}
+.cookie_ui .admin_dialog_buttons .admin_dialog_button-primary:hover {
+    background: #20132D;
+    color: #FFFFFF !important;
+}
+input:checked+.advance_cookies__item__checkbox__input:before {
+    background: #281838;
+}

@@ -1,0 +1,1738 @@
+<!DOCTYPE html>
+<!--[if IE 7]>
+<html class="no-ios no-js lte-ie9 lte-ie8 lte-ie7" lang="en" xml:lang="en"><![endif]-->
+<!--[if IE 8]>
+<html class="no-ios no-js lte-ie9 lte-ie8" lang="en" xml:lang="en"><![endif]-->
+<!--[if IE 9]>
+<html class="no-ios no-js lte-ie9" lang="en" xml:lang="en"><![endif]-->
+<!--[if !IE]><!-->
+<html class="js no-mobile csscalc csspointerevents supports flexbox flexboxlegacy csstransforms csstransforms3d passiveeventlisteners objectfit object-fit fontawesome-i2svg-active fontawesome-i2svg-complete"
+      lang="en" xml:lang="en" style="height: 100%;" xmlns="http://www.w3.org/1999/html">
+<script>(function () {
+    window.addEventListener('message', function (event) {
+            if (
+                event.data &&
+                event.data.id &&
+                typeof event.data.id.startsWith === 'function' &&
+                event.data.id.startsWith('adobeExperienceCloudDebuggerContentMessagingIdentifier-')
+            ) {
+                event.stopImmediatePropagation();
+            }
+        },
+        {capture: true});
+})();</script>
+<script>
+    (function () {
+        const contentScriptEventTrigger = function (data) {
+            window.postMessage({id: 'adobeExperienceCloudDebuggerContentMessagingIdentifier-1', data: data});
+        }
+        const DATA_LAYER_LOCAL_STORAGE_KEY =
+            "com.adobe.experiencePlatformDebugger.dataLayer.key";
+        const dataLayerKey = window.localStorage.getItem(DATA_LAYER_LOCAL_STORAGE_KEY);
+
+        if (dataLayerKey) {
+            // sindresorhus/on-change
+            // MIT - License
+            // https://github.com/sindresorhus/on-change
+            const PATH_SEPARATOR = ".";
+            const TARGET = Symbol("target");
+            const UNSUBSCRIBE = Symbol("unsubscribe");
+
+            const isPrimitive = value =>
+                value === null ||
+                (typeof value !== "object" && typeof value !== "function");
+
+            const isBuiltinWithoutMutableMethods = value =>
+                value instanceof RegExp || value instanceof Number;
+
+            const isBuiltinWithMutableMethods = value => value instanceof Date;
+
+            const concatPath = (path, property) => {
+                let ret = path;
+                if (property && property.toString) {
+                    if (path) {
+                        ret += PATH_SEPARATOR;
+                    }
+
+                    ret += property.toString();
+                }
+
+                return ret;
+            };
+
+            const walkPath = (path, callback) => {
+                let index;
+                let remainingPath = path;
+                while (remainingPath) {
+                    index = remainingPath.indexOf(PATH_SEPARATOR);
+
+                    if (index === -1) {
+                        index = remainingPath.length;
+                    }
+
+                    callback(remainingPath.slice(0, index));
+
+                    remainingPath = remainingPath.slice(index + 1);
+                }
+            };
+
+            const shallowClone = value => {
+                if (Array.isArray(value)) {
+                    return value.slice();
+                }
+
+                return {...value};
+            };
+
+            const onChange = (object, updateDataLayer, options = {}) => {
+                const proxyTarget = Symbol("ProxyTarget");
+                let inApply = false;
+                let changed = false;
+                let applyPath;
+                let applyPrevious;
+                let isUnsubscribed = false;
+                const equals = options.equals || Object.is;
+                let propCache = new WeakMap();
+                let pathCache = new WeakMap();
+                let proxyCache = new WeakMap();
+                let boundUpdateDataLayer;
+
+                const handleChange = (path, property, previous, value) => {
+                    if (isUnsubscribed) {
+                        return;
+                    }
+
+                    if (!inApply) {
+                        boundUpdateDataLayer(concatPath(path, property), value, previous);
+                        return;
+                    }
+
+                    if (
+                        inApply &&
+                        applyPrevious &&
+                        previous !== undefined &&
+                        value !== undefined &&
+                        property !== "length"
+                    ) {
+                        let item = applyPrevious;
+
+                        if (path !== applyPath) {
+                            const appliedPath = path.replace(applyPath, "").slice(1);
+
+                            walkPath(appliedPath, key => {
+                                item[key] = shallowClone(item[key]);
+                                item = item[key];
+                            });
+                        }
+
+                        item[property] = previous;
+                    }
+
+                    changed = true;
+                };
+
+                const getOwnPropertyDescriptor = (target, property) => {
+                    let props = propCache ? propCache.get(target) : undefined;
+
+                    if (props) {
+                        return props;
+                    }
+
+                    props = new Map();
+                    propCache.set(target, props);
+
+                    let prop = props.get(property);
+                    if (!prop) {
+                        prop = Reflect.getOwnPropertyDescriptor(target, property);
+                        props.set(property, prop);
+                    }
+
+                    return prop;
+                };
+
+                const invalidateCachedDescriptor = (target, property) => {
+                    const props = propCache ? propCache.get(target) : undefined;
+
+                    if (props) {
+                        props.delete(property);
+                    }
+                };
+
+                const buildProxy = (value, path) => {
+                    if (isUnsubscribed) {
+                        return value;
+                    }
+
+                    pathCache.set(value, path);
+
+                    let proxy = proxyCache.get(value);
+
+                    if (proxy === undefined) {
+                        proxy = new Proxy(value, handler);
+                        proxyCache.set(value, proxy);
+                    }
+
+                    return proxy;
+                };
+
+                const unsubscribe = target => {
+                    isUnsubscribed = true;
+                    propCache = null;
+                    pathCache = null;
+                    proxyCache = null;
+
+                    return target;
+                };
+
+                const ignoreChange = property =>
+                    isUnsubscribed ||
+                    (options.ignoreSymbols === true && typeof property === "symbol");
+
+                const handler = {
+                    get(target, property, receiver) {
+                        if (property === proxyTarget || property === TARGET) {
+                            return target;
+                        }
+
+                        if (property === UNSUBSCRIBE && pathCache.get(target) === "") {
+                            return unsubscribe(target);
+                        }
+
+                        const value = Reflect.get(target, property, receiver);
+                        if (
+                            isPrimitive(value) ||
+                            isBuiltinWithoutMutableMethods(value) ||
+                            property === "constructor" ||
+                            options.isShallow === true
+                        ) {
+                            return value;
+                        }
+
+                        // Preserve invariants
+                        const descriptor = getOwnPropertyDescriptor(target, property);
+                        if (descriptor && !descriptor.configurable) {
+                            if (descriptor.set && !descriptor.get) {
+                                return undefined;
+                            }
+
+                            if (descriptor.writable === false) {
+                                return value;
+                            }
+                        }
+
+                        return buildProxy(value, concatPath(pathCache.get(target), property));
+                    },
+
+                    set(target, property, value, receiver) {
+                        const proxyTargetValue =
+                            value && value[proxyTarget] !== undefined
+                                ? value[proxyTarget]
+                                : value;
+
+                        const ignore = ignoreChange(property);
+                        const previous = ignore
+                            ? null
+                            : Reflect.get(target, property, receiver);
+                        const result = Reflect.set(
+                            target[proxyTarget] || target,
+                            property,
+                            proxyTargetValue
+                        );
+
+                        if (!ignore && !equals(previous, proxyTargetValue)) {
+                            handleChange(
+                                pathCache.get(target),
+                                property,
+                                previous,
+                                proxyTargetValue
+                            );
+                        }
+
+                        return result;
+                    },
+
+                    defineProperty(target, property, descriptor) {
+                        const result = Reflect.defineProperty(target, property, descriptor);
+
+                        if (!ignoreChange(property)) {
+                            invalidateCachedDescriptor(target, property);
+
+                            handleChange(
+                                pathCache.get(target),
+                                property,
+                                undefined,
+                                descriptor.value
+                            );
+                        }
+
+                        return result;
+                    },
+
+                    deleteProperty(target, property) {
+                        if (!Reflect.has(target, property)) {
+                            return true;
+                        }
+
+                        const ignore = ignoreChange(property);
+                        const previous = ignore ? null : Reflect.get(target, property);
+                        const result = Reflect.deleteProperty(target, property);
+
+                        if (!ignore) {
+                            invalidateCachedDescriptor(target, property);
+
+                            handleChange(pathCache.get(target), property, previous);
+                        }
+
+                        return result;
+                    },
+
+                    apply(target, thisArg, argumentsList) {
+                        const compare = isBuiltinWithMutableMethods(proxyTargetThisArg);
+
+                        const proxyTargetThisArg = compare ? thisArg[proxyTarget] : thisArg;
+
+                        if (!inApply) {
+                            inApply = true;
+
+                            if (compare) {
+                                applyPrevious = proxyTargetThisArg.valueOf();
+                            }
+
+                            if (
+                                Array.isArray(proxyTargetThisArg) ||
+                                toString.call(proxyTargetThisArg) === "[object Object]"
+                            ) {
+                                applyPrevious = shallowClone(proxyTargetThisArg[proxyTarget]);
+                            }
+
+                            applyPath = pathCache.get(target);
+                            applyPath = applyPath.slice(
+                                0,
+                                Math.max(applyPath.lastIndexOf(PATH_SEPARATOR), 0)
+                            );
+
+                            const result = Reflect.apply(
+                                target,
+                                proxyTargetThisArg,
+                                argumentsList
+                            );
+
+                            inApply = false;
+
+                            if (
+                                changed ||
+                                (compare && !equals(applyPrevious, proxyTargetThisArg.valueOf()))
+                            ) {
+                                handleChange(
+                                    applyPath,
+                                    "",
+                                    applyPrevious,
+                                    proxyTargetThisArg[proxyTarget] || proxyTargetThisArg
+                                );
+                                applyPrevious = null;
+                                changed = false;
+                            }
+
+                            return result;
+                        }
+
+                        return Reflect.apply(target, proxyTargetThisArg, argumentsList);
+                    }
+                };
+
+                const proxy = buildProxy(object, "");
+                boundUpdateDataLayer = updateDataLayer.bind(proxy);
+
+                return proxy;
+            };
+
+            onChange.target = proxy => proxy[TARGET] || proxy;
+            onChange.unsubscribe = proxy => proxy[UNSUBSCRIBE] || proxy;
+
+            let proxy;
+            let previousDataLayer;
+
+            function _serialize(dataLayer) {
+                try {
+                    return JSON.stringify({...dataLayer}, null, 2);
+                } catch (e) {
+                    return JSON.stringify(dataLayer, null, 2);
+                }
+            }
+
+            function _notify(dataLayer) {
+                contentScriptEventTrigger({
+                    data: {
+                        dataLayer
+                    },
+                    timestamp: Date.now(),
+                    timeSincePageLoad: window.performance.now()
+                });
+            }
+
+            function onDataLayerUpdate() {
+                const dataLayer = _serialize(this);
+
+                if (previousDataLayer !== dataLayer) {
+                    previousDataLayer = dataLayer;
+                    _notify(dataLayer);
+                }
+            }
+
+            function onDataLayerSet(newDataLayer) {
+                const dataLayer = _serialize(newDataLayer);
+                if (!previousDataLayer || previousDataLayer !== dataLayer) {
+                    previousDataLayer = dataLayer;
+                    _notify(dataLayer);
+                }
+            }
+
+            Object.defineProperty(window, dataLayerKey, {
+                get() {
+                    return proxy;
+                },
+                set(newDataLayer) {
+                    onDataLayerSet(newDataLayer);
+                    proxy = onChange(newDataLayer, onDataLayerUpdate);
+                },
+                enumerable: true,
+                configurable: true
+            });
+
+            const oldObjectDefine = Object.defineProperty.bind(Object);
+            Object.defineProperty = (obj, prop, descriptor) => {
+                if (prop === dataLayerKey) {
+                    console.debug(
+                        "Data layer being overwritten by Object.defineProperty(). Falling back to polling..."
+                    );
+
+                    function pollForChanges() {
+                        const dataLayer = _serialize(window[dataLayerKey]);
+                        if (previousDataLayer !== dataLayer) {
+                            previousDataLayer = dataLayer;
+                            _notify(dataLayer);
+                        }
+                        window.requestAnimationFrame(pollForChanges);
+                    }
+
+                    window.requestAnimationFrame(pollForChanges);
+                }
+                return oldObjectDefine(obj, prop, descriptor);
+            };
+        }
+
+    })();
+</script>
+<script>
+    (function () {
+        const contentScriptEventTrigger = function (data) {
+            window.postMessage({id: 'adobeExperienceCloudDebuggerContentMessagingIdentifier-2', data: data});
+        }
+        // https://github.com/adobe/alloy/wiki/Monitoring-Hooks
+
+// This script is run within an immediately executed function, so variables declared here
+// are local to this script only.
+        const orgIdsByInstanceName = {};
+
+        window.__alloyMonitors = window.__alloyMonitors || [];
+        window.__alloyMonitors.push({
+            onBeforeNetworkRequest(data) {
+                setTimeout(() => {
+                    contentScriptEventTrigger({
+                        name: "onAlloyNetworkRequest",
+                        data: {
+                            ...data,
+                            orgId: orgIdsByInstanceName[data.instanceName]
+                        }
+                    });
+                });
+            },
+            onNetworkResponse(data) {
+                // There are fields in data that don't serialize well, so we only include parsedBody
+                setTimeout(() => {
+                    contentScriptEventTrigger({
+                        name: "onAlloyNetworkResponse",
+                        data: {
+                            parsedBody: data.parsedBody,
+                            orgId: orgIdsByInstanceName[data.instanceName]
+                        }
+                    });
+                });
+            },
+            onNetworkError(data) {
+                setTimeout(() => {
+                    contentScriptEventTrigger({name: "onAlloyNetworkError", data});
+                });
+            },
+            onInstanceConfigured(data) {
+                // We keep a cache of orgIdsByInstanceNames here because the response to getLibraryInfo
+                // may happen after a network request already occurred.
+                orgIdsByInstanceName[data.instanceName] = data.config.orgId;
+                setTimeout(() => {
+                    window[data.instanceName]("getLibraryInfo").then(({libraryInfo}) => {
+                        // The configuration section uses debugEnabled to know the initial state
+                        const debugEnabledSessionStorage = window.sessionStorage.getItem(
+                            `com.adobe.alloy.instance.${data.instanceName}.debug`
+                        );
+                        const debugEnabled =
+                            debugEnabledSessionStorage === "true" ||
+                            (data.config.debugEnabled && debugEnabledSessionStorage === null);
+
+                        contentScriptEventTrigger({
+                            name: "onInstanceConfigured",
+                            data: {
+                                namespace: data.instanceName,
+                                edgeConfigId: data.config.edgeConfigId,
+                                edgeDomain: data.config.edgeDomain,
+                                orgId: data.config.orgId,
+                                // we only use the version (for now), so we don't need to send anything else.
+                                libraryInfo: {
+                                    version: libraryInfo.version
+                                },
+                                debugEnabled
+                            }
+                        });
+                    });
+                });
+            }
+        });
+
+    })();
+</script>
+<script>
+    (function () {
+        const contentScriptEventTrigger = function (data) {
+            window.postMessage({id: 'adobeExperienceCloudDebuggerContentMessagingIdentifier-3', data: data});
+        }
+
+        /**
+         * Hooks into both DTM's and Launch's logging mechanisms in order to capture all log messages and
+         * send them to the UI to display to the user
+         */
+        function notifyContentScript(log) {
+            contentScriptEventTrigger({
+                data: log,
+                timestamp: Date.now(),
+                timeSincePageLoad: window.performance.now()
+            });
+        }
+
+// Create a stub _satellite with the common methods. Without this, this injected script will
+// break pages that have logic on them like "window._satellite && window._satellite.pageBottom()"
+        const noop = () => {
+        };
+        const satelliteStub = {};
+        [
+            "getVar",
+            "getVisitorId",
+            "notify",
+            "pageBottom",
+            "readCookie",
+            "setCookie",
+            "setDebug",
+            "setVar",
+            "track"
+        ].forEach(prop => {
+            satelliteStub[prop] = noop;
+        });
+
+        window._satellite = {
+            ...satelliteStub,
+            ...window._satellite
+        };
+        window._satellite.override = window._satellite.override || {};
+
+// Hook into _satellite in order to capture DTM logs
+        if (window.Object && window.Object.defineProperty) {
+            window.Object.defineProperty(
+                window._satellite.override,
+                "adobe.aepDebugger.dtmInitHook",
+                {
+                    enumerable: true,
+                    get() {
+                        onSatelliteInit();
+                        return "";
+                    },
+                    set() {
+                    }
+                }
+            );
+        }
+
+        function onSatelliteInit() {
+            // This function will run when DTM is loaded on the page. We use it to hook into DTM logs
+            const _satellite = window._satellite;
+            if (_satellite.Logger) {
+                _satellite.Logger.keepLimit = 9999;
+            }
+
+            // override notify
+            // Reason: we want to intercept messages that go through here
+            // without worrying about limits or messing anything up internally
+            const originalNotify = _satellite.notify;
+            _satellite.notify = (message, level) => {
+                const logLevel = ["log", "log", "log", "info", "warn", "error"];
+
+                // call original
+                originalNotify(message, level);
+
+                const log = {
+                    solution: "dtm",
+                    solutions: ["dtm"],
+                    level: logLevel[level] || "log",
+                    message: ""
+                };
+
+                // make sure that we have a message
+                if (message && typeof message === "string") {
+                    // only add it
+                    log.message = message;
+
+                    // check to see what solution it came from
+                    if (message.indexOf("Adobe Analytics:") !== -1) {
+                        log.solutions.push("analytics");
+                    } else if (message.indexOf("Test & Target:") !== -1) {
+                        log.solutions.push("target");
+                    } else if (message.indexOf("Visitor ID:") !== -1) {
+                        log.solutions.push("visitorService");
+                    } else if (message.indexOf("AdLens:") !== -1) {
+                        log.solutions.push("mediaOptimizer");
+                    }
+                }
+                notifyContentScript(log);
+            };
+        }
+
+        function _overrideConsoleLogFunction(prefix, solution, level) {
+            const originalFunction = console[level];
+            console[level] = (...args) => {
+                const argsAsArray = Array.prototype.slice.call(args);
+                originalFunction.apply(console, argsAsArray);
+                const mappedArgs = argsAsArray.map(arg => {
+                    let result = "";
+                    if (arg && typeof arg.toString === "function") {
+                        result = arg.toString();
+                    }
+                    if (!result || result === "[object Object]") {
+                        try {
+                            result = JSON.stringify(arg);
+                        } catch (e) {
+                            return "";
+                        }
+                    }
+                    return result;
+                });
+
+                const message = mappedArgs.join(" ");
+
+                if (typeof message === "string") {
+                    if (message.indexOf(prefix) === 0) {
+                        const log = {
+                            solution,
+                            solutions: [solution],
+                            level,
+                            message,
+                            searchIndex: message,
+                            params: mappedArgs
+                        };
+
+                        // check to see what solution it came from
+                        if (message.indexOf("[Adobe Analytics]") !== -1) {
+                            log.solutions.push("analytics");
+                        } else if (message.indexOf("[Adobe Target]") !== -1) {
+                            log.solutions.push("target");
+                        } else if (message.indexOf("[Experience Cloud ID Service]") !== -1) {
+                            log.solutions.push("visitorService");
+                        } else if (message.indexOf("[Adobe Media Optimizer]") !== -1) {
+                            log.solutions.push("mediaOptimizer");
+                        }
+                        notifyContentScript(log);
+                    }
+                }
+            };
+        }
+
+        /**
+         * Overrides the various console.* methods in order to intercept messages that
+         * are sent to the console by launch. A message was sent be launch if it starts
+         * with the rocket emoji 🚀. Note that this is a somewhat brittle solution
+         * since if the emoji ever changes this integration will break. However this
+         * is the only solution that works for now.
+         *
+         * Any messages that are not prefixed with the rocket emoji are ignored and passed
+         * through to the original console function
+         */
+        function _overrideConsoleForLaunch() {
+            const prefix = "\uD83D\uDE80";
+            ["error", "info", "log", "warn"].forEach(
+                _overrideConsoleLogFunction.bind(null, prefix, "launch")
+            );
+        }
+
+        /**
+         * Intercepts console messages made by alloy (prefixed with [alloy]) and notifies content script about each one.
+         * Note that this is a brittle solution and should not be used long term.
+         *
+         * Ideally there will be some debugging hooks built into alloy itself that we can connect to
+         */
+        function _overrideConsoleForAlloy() {
+            window.__alloyNS = [];
+            const originalPush = window.__alloyNS.push;
+            window.__alloyNS.push = (namespace, ...rest) => {
+                ["error", "info", "log", "warn"].forEach(
+                    _overrideConsoleLogFunction.bind(null, `[${namespace}]`, "alloy")
+                );
+
+                originalPush.apply(
+                    window.__alloyNS,
+                    Array.prototype.slice.call([namespace, ...rest])
+                );
+            };
+        }
+
+        /**
+         * Overrides console.debug and console.warn methods in order to intercept messages that
+         * are sent to the console by at.js. A message was sent be at.js if it starts
+         * with "AT:".
+         *
+         * Note that this is a somewhat brittle solution
+         * since if the prefix ever changes this integration will break. However this
+         * is the only solution that works for now, since at.js does not have any debugging hooks.
+         * If this ever breaks, the first place to look is at the logger implementation in at.js
+         * to see if they changed the prefix or started using different console functions. Check
+         * https://git.corp.adobe.com/TnT/atjs-library-v2/blob/master/src/delivery/monitoring/logger/helper.js
+         *
+         * Any messages that are not prefixed with "AT:" are ignored and passed
+         * through to the original console function
+         */
+        function _overrideConsoleForAtJs() {
+            const prefix = "AT:";
+            ["debug", "warn"].forEach(
+                _overrideConsoleLogFunction.bind(null, prefix, "target")
+            );
+        }
+
+        _overrideConsoleForLaunch();
+        _overrideConsoleForAlloy();
+        _overrideConsoleForAtJs();
+
+// Once the page has finished loading, remove _satellite if both DTM and Launch were not found
+        window.addEventListener("load", () => {
+            if (!_hasDtm() && !_hasLaunch()) {
+                delete window._satellite;
+            }
+        });
+
+        /**
+         * @returns {boolean} whether launch is present on the page
+         */
+        function _hasLaunch() {
+            return !!(window._satellite && window._satellite._container);
+        }
+
+        /**
+         * @returns {boolean} whether DTM is present on the page
+         */
+        function _hasDtm() {
+            return !!(window._satellite && window._satellite.configurationSettings);
+        }
+
+    })();
+</script>
+<script>
+    (function () {
+        const contentScriptEventTrigger = function (data) {
+            window.postMessage({id: 'adobeExperienceCloudDebuggerContentMessagingIdentifier-4', data: data});
+        }
+        window.___target_traces = window.___target_traces || [];
+        const originalPush = window.___target_traces.push;
+
+        window.___target_traces.push = function targetTracePush(trace) {
+            contentScriptEventTrigger({trace});
+            originalPush.call(this, trace);
+        };
+
+    })();
+</script><!--<![endif]-->
+<head>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+
+    <style type="text/css">svg:not(:root).svg-inline--fa {
+        overflow: visible
+    }
+
+    .svg-inline--fa {
+        display: inline-block;
+        font-size: inherit;
+        height: 1em;
+        overflow: visible;
+        vertical-align: -.125em
+    }
+
+    .svg-inline--fa.fa-lg {
+        vertical-align: -.225em
+    }
+
+    .svg-inline--fa.fa-w-1 {
+        width: .0625em
+    }
+
+    .svg-inline--fa.fa-w-2 {
+        width: .125em
+    }
+
+    .svg-inline--fa.fa-w-3 {
+        width: .1875em
+    }
+
+    .svg-inline--fa.fa-w-4 {
+        width: .25em
+    }
+
+    .svg-inline--fa.fa-w-5 {
+        width: .3125em
+    }
+
+    .svg-inline--fa.fa-w-6 {
+        width: .375em
+    }
+
+    .svg-inline--fa.fa-w-7 {
+        width: .4375em
+    }
+
+    .svg-inline--fa.fa-w-8 {
+        width: .5em
+    }
+
+    .svg-inline--fa.fa-w-9 {
+        width: .5625em
+    }
+
+    .svg-inline--fa.fa-w-10 {
+        width: .625em
+    }
+
+    .svg-inline--fa.fa-w-11 {
+        width: .6875em
+    }
+
+    .svg-inline--fa.fa-w-12 {
+        width: .75em
+    }
+
+    .svg-inline--fa.fa-w-13 {
+        width: .8125em
+    }
+
+    .svg-inline--fa.fa-w-14 {
+        width: .875em
+    }
+
+    .svg-inline--fa.fa-w-15 {
+        width: .9375em
+    }
+
+    .svg-inline--fa.fa-w-16 {
+        width: 1em
+    }
+
+    .svg-inline--fa.fa-w-17 {
+        width: 1.0625em
+    }
+
+    .svg-inline--fa.fa-w-18 {
+        width: 1.125em
+    }
+
+    .svg-inline--fa.fa-w-19 {
+        width: 1.1875em
+    }
+
+    .svg-inline--fa.fa-w-20 {
+        width: 1.25em
+    }
+
+    .svg-inline--fa.fa-pull-left {
+        margin-right: .3em;
+        width: auto
+    }
+
+    .svg-inline--fa.fa-pull-right {
+        margin-left: .3em;
+        width: auto
+    }
+
+    .svg-inline--fa.fa-border {
+        height: 1.5em
+    }
+
+    .svg-inline--fa.fa-li {
+        width: 2em
+    }
+
+    .svg-inline--fa.fa-fw {
+        width: 1.25em
+    }
+
+    .fa-layers svg.svg-inline--fa {
+        bottom: 0;
+        left: 0;
+        margin: auto;
+        position: absolute;
+        right: 0;
+        top: 0
+    }
+
+    .fa-layers {
+        display: inline-block;
+        height: 1em;
+        position: relative;
+        text-align: center;
+        vertical-align: -.125em;
+        width: 1em
+    }
+
+    .fa-layers svg.svg-inline--fa {
+        -webkit-transform-origin: center center;
+        transform-origin: center center
+    }
+
+    .fa-layers-counter, .fa-layers-text {
+        display: inline-block;
+        position: absolute;
+        text-align: center
+    }
+
+    .fa-layers-text {
+        left: 50%;
+        top: 50%;
+        -webkit-transform: translate(-50%, -50%);
+        transform: translate(-50%, -50%);
+        -webkit-transform-origin: center center;
+        transform-origin: center center
+    }
+
+    .fa-layers-counter {
+        background-color: #ff253a;
+        border-radius: 1em;
+        -webkit-box-sizing: border-box;
+        box-sizing: border-box;
+        color: #fff;
+        height: 1.5em;
+        line-height: 1;
+        max-width: 5em;
+        min-width: 1.5em;
+        overflow: hidden;
+        padding: .25em;
+        right: 0;
+        text-overflow: ellipsis;
+        top: 0;
+        -webkit-transform: scale(.25);
+        transform: scale(.25);
+        -webkit-transform-origin: top right;
+        transform-origin: top right
+    }
+
+    .fa-layers-bottom-right {
+        bottom: 0;
+        right: 0;
+        top: auto;
+        -webkit-transform: scale(.25);
+        transform: scale(.25);
+        -webkit-transform-origin: bottom right;
+        transform-origin: bottom right
+    }
+
+    .fa-layers-bottom-left {
+        bottom: 0;
+        left: 0;
+        right: auto;
+        top: auto;
+        -webkit-transform: scale(.25);
+        transform: scale(.25);
+        -webkit-transform-origin: bottom left;
+        transform-origin: bottom left
+    }
+
+    .fa-layers-top-right {
+        right: 0;
+        top: 0;
+        -webkit-transform: scale(.25);
+        transform: scale(.25);
+        -webkit-transform-origin: top right;
+        transform-origin: top right
+    }
+
+    .fa-layers-top-left {
+        left: 0;
+        right: auto;
+        top: 0;
+        -webkit-transform: scale(.25);
+        transform: scale(.25);
+        -webkit-transform-origin: top left;
+        transform-origin: top left
+    }
+
+    .fa-lg {
+        font-size: 1.3333333333em;
+        line-height: .75em;
+        vertical-align: -.0667em
+    }
+
+    .fa-xs {
+        font-size: .75em
+    }
+
+    .fa-sm {
+        font-size: .875em
+    }
+
+    .fa-1x {
+        font-size: 1em
+    }
+
+    .fa-2x {
+        font-size: 2em
+    }
+
+    .fa-3x {
+        font-size: 3em
+    }
+
+    .fa-4x {
+        font-size: 4em
+    }
+
+    .fa-5x {
+        font-size: 5em
+    }
+
+    .fa-6x {
+        font-size: 6em
+    }
+
+    .fa-7x {
+        font-size: 7em
+    }
+
+    .fa-8x {
+        font-size: 8em
+    }
+
+    .fa-9x {
+        font-size: 9em
+    }
+
+    .fa-10x {
+        font-size: 10em
+    }
+
+    .fa-fw {
+        text-align: center;
+        width: 1.25em
+    }
+
+    .fa-ul {
+        list-style-type: none;
+        margin-left: 2.5em;
+        padding-left: 0
+    }
+
+    .fa-ul > li {
+        position: relative
+    }
+
+    .fa-li {
+        left: -2em;
+        position: absolute;
+        text-align: center;
+        width: 2em;
+        line-height: inherit
+    }
+
+    .fa-border {
+        border: solid .08em #eee;
+        border-radius: .1em;
+        padding: .2em .25em .15em
+    }
+
+    .fa-pull-left {
+        float: left
+    }
+
+    .fa-pull-right {
+        float: right
+    }
+
+    .fa.fa-pull-left, .fab.fa-pull-left, .fal.fa-pull-left, .far.fa-pull-left, .fas.fa-pull-left {
+        margin-right: .3em
+    }
+
+    .fa.fa-pull-right, .fab.fa-pull-right, .fal.fa-pull-right, .far.fa-pull-right, .fas.fa-pull-right {
+        margin-left: .3em
+    }
+
+    .fa-spin {
+        -webkit-animation: fa-spin 2s infinite linear;
+        animation: fa-spin 2s infinite linear
+    }
+
+    .fa-pulse {
+        -webkit-animation: fa-spin 1s infinite steps(8);
+        animation: fa-spin 1s infinite steps(8)
+    }
+
+    @-webkit-keyframes fa-spin {
+        0% {
+            -webkit-transform: rotate(0);
+            transform: rotate(0)
+        }
+        100% {
+            -webkit-transform: rotate(360deg);
+            transform: rotate(360deg)
+        }
+    }
+
+    @keyframes fa-spin {
+        0% {
+            -webkit-transform: rotate(0);
+            transform: rotate(0)
+        }
+        100% {
+            -webkit-transform: rotate(360deg);
+            transform: rotate(360deg)
+        }
+    }
+
+    .fa-rotate-90 {
+        -webkit-transform: rotate(90deg);
+        transform: rotate(90deg)
+    }
+
+    .fa-rotate-180 {
+        -webkit-transform: rotate(180deg);
+        transform: rotate(180deg)
+    }
+
+    .fa-rotate-270 {
+        -webkit-transform: rotate(270deg);
+        transform: rotate(270deg)
+    }
+
+    .fa-flip-horizontal {
+        -webkit-transform: scale(-1, 1);
+        transform: scale(-1, 1)
+    }
+
+    .fa-flip-vertical {
+        -webkit-transform: scale(1, -1);
+        transform: scale(1, -1)
+    }
+
+    .fa-flip-both, .fa-flip-horizontal.fa-flip-vertical {
+        -webkit-transform: scale(-1, -1);
+        transform: scale(-1, -1)
+    }
+
+    :root .fa-flip-both, :root .fa-flip-horizontal, :root .fa-flip-vertical, :root .fa-rotate-180, :root .fa-rotate-270, :root .fa-rotate-90 {
+        -webkit-filter: none;
+        filter: none
+    }
+
+    .fa-stack {
+        display: inline-block;
+        height: 2em;
+        position: relative;
+        width: 2.5em
+    }
+
+    .fa-stack-1x, .fa-stack-2x {
+        bottom: 0;
+        left: 0;
+        margin: auto;
+        position: absolute;
+        right: 0;
+        top: 0
+    }
+
+    .svg-inline--fa.fa-stack-1x {
+        height: 1em;
+        width: 1.25em
+    }
+
+    .svg-inline--fa.fa-stack-2x {
+        height: 2em;
+        width: 2.5em
+    }
+
+    .fa-inverse {
+        color: #fff
+    }
+
+    .sr-only {
+        border: 0;
+        clip: rect(0, 0, 0, 0);
+        height: 1px;
+        margin: -1px;
+        overflow: hidden;
+        padding: 0;
+        position: absolute;
+        width: 1px
+    }
+
+    .sr-only-focusable:active, .sr-only-focusable:focus {
+        clip: auto;
+        height: auto;
+        margin: 0;
+        overflow: visible;
+        position: static;
+        width: auto
+    }</style>
+    <link rel="canonical" href="https://www.springhillcatholic.co.uk/page/?title=Parents%27+Association&amp;pid=44">
+    <script>window.FontAwesomeConfig = {showMissingIcons: false};</script>
+    <link rel="stylesheet" media="screen" href="index_files/fa-web-font.css">
+    <script defer="defer" src="index_files/fontawesome-all.min.js"></script>
+    <script defer="defer" src="index_files/fa-v4-shims.min.js"></script>
+
+    <title>Springhill Catholic Primary School - Parents' Association</title>
+
+    <style type="text/css">
+        :root {
+
+            --col-pri: rgb(34, 34, 34);
+
+            --col-sec: rgb(136, 136, 136);
+
+        }
+    </style>
+
+    <!--[if IE]>
+    <script>
+        console = {
+            log: function () {
+                return;
+            }
+        };
+    </script>
+    <![endif]-->
+
+    <script>
+        var boolItemEditDisabled;
+        var boolLanguageMode, boolLanguageEditOriginal;
+        var boolViewingConnect;
+        var boolConnectDashboard;
+        var displayRegions = [];
+        var intNewFileCount = 0;
+        strItemType = "page";
+        strSubItemType = "page";
+
+        var featureSupport = {
+            tagging: false,
+            eventTagging: false
+        };
+        var boolLoggedIn = false;
+        boolAdminMode = false;
+        var boolSuperUser = false;
+        strCookieBarStyle = 'none';
+        intParentPageID = "9";
+        intCurrentItemID = 44;
+        var intCurrentCatID = "";
+        boolIsHomePage = false;
+        boolItemEditDisabled = true;
+        boolLanguageEditOriginal = true;
+        strCurrentLanguage = 'en-gb';
+        strFileAttachmentsUploadLocation = 'bottom';
+        boolViewingConnect = false;
+        boolConnectDashboard = false;
+
+    </script>
+
+    <script src="index_files/jquery.js"></script>
+    <script src="index_files/jquery.prefilter.js"></script>
+    <script src="index_files/jquery.query.js"></script>
+    <script src="index_files/js.cookie.js"></script>
+    <script src="index_files/template-javascript.asp"></script>
+    <script src="index_files/functions.login.new.asp"></script>
+
+    <script>
+
+    </script>
+    <link href="https://www.springhillcatholic.co.uk/feeds/pages.asp?pid=44" rel="alternate" type="application/rss+xml"
+          title="Springhill Catholic Primary School  - Parents' Association - Page Updates">
+    <link href="https://www.springhillcatholic.co.uk/feeds/comments.asp?title=Parents%27%20Association&amp;item=page&amp;pid=44"
+          rel="alternate" type="application/rss+xml"
+          title="Springhill Catholic Primary School  - Parents' Association - Page Comments">
+    <link rel="stylesheet" media="screen" href="index_files/main.css">
+    <link rel="stylesheet" media="screen" href="index_files/content.css">
+
+
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1">
+    <link rel="author" href="https://www.springhillcatholic.co.uk/humans.txt">
+    <link rel="icon" href="index_files/AC7FA68B308543692E4FD1F5AC3C8436.png">
+    <link rel="apple-touch-icon" href="index_files/AC7FA68B308543692E4FD1F5AC3C8436.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com/">
+    <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="">
+    <link href="index_files/css2.css" rel="stylesheet">
+    <link rel="stylesheet" href="index_files/print.css" type="text/css" media="print">
+
+    <script>
+        var html = document.querySelector('html'), strMobClass = 'no-mobile'
+        html.classList.remove('no-ios')
+        navigator.userAgent.match(/(Android|webOS|iPhone|iPad|Windows Phone)/g) && (strMobClass = 'mobile')
+        html.classList.add(strMobClass)
+
+        var strDefaultThumbnail = "/_site/data/files/images/logos/AC7FA68B308543692E4FD1F5AC3C8436.png";
+    </script>
+
+    <style rel="stylesheet" type="text/css">
+        :root {
+            --pri: #af1130;
+            --sec: #ffffff;
+        }
+    </style>
+    <link rel="stylesheet" media="screen" href="index_files/content-blocks.css">
+    <link rel="stylesheet" media="screen" href="index_files/cookie-colour.css">
+    <link rel="stylesheet" media="screen" href="index_files/cookies.css">
+    <link rel="stylesheet" media="screen" href="index_files/cookies.advanced.css">
+    <link rel="stylesheet" media="screen" href="index_files/overlord.css">
+    <link rel="stylesheet" media="screen" href="index_files/templates_002.css">
+    <link rel="stylesheet" media="screen" href="index_files/attachments.css">
+    <link rel="stylesheet" media="screen" href="index_files/templates.css">
+    <style>#print_me {
+        display: none;
+    }</style>
+    <script src="index_files/modernizr.js"></script>
+
+    <meta property="og:site_name" content="Springhill Catholic Primary School ">
+    <meta property="og:title" content="Parents' Association">
+    <meta property="og:image" content="https://www.springhillcatholic.co.uk/_site/images/design/thumbnail.jpg">
+    <meta property="og:type" content="website">
+    <meta property="twitter:card" content="summary">
+    <link type="text/css" rel="stylesheet" charset="UTF-8" href="index_files/m=el_main_css.css">
+    <script type="text/javascript" charset="UTF-8" src="index_files/m=el_main"></script>
+</head>
+
+
+<body style="position: relative; min-height: 100%; top: 0px;">
+
+
+<div id="print_me"></div>
+<svg style="visibility: hidden; position: absolute;">
+    <defs>
+        <symbol id="icon_plus" viewBox="0 0 16 16">
+            <path d="M7 16V9H0V7h7V0h2v7h7v2H9v7Z"></path>
+        </symbol>
+        <symbol id="icon_translate" viewBox="0 0 512 512">
+            <path d="M456.8,208.9H264c-30.4,0-55.2,24.7-55.2,55.2v104.8l-50,35.7c-3.9,2.8-6.3,7.4-6.3,12.2c0,4.8,2.3,9.4,6.3,12.2l50.6,36.1 c3.9,26.6,26.9,47,54.6,47h192.8c30.4,0,55.2-24.7,55.2-55.2V264C512,233.6,487.3,208.9,456.8,208.9z M392,419.6 c-3.5,0-6.3-1.1-7.1-4.2l-6.1-21.4H342l-6.1,21.4c-0.8,3.1-3.5,4.2-7.1,4.2c-5.6,0-13.2-3.5-13.2-8.7c0-0.3,0.2-1,0.3-1.6l31-101.1 c1.4-4.8,7.4-7.1,13.3-7.1c6.1,0,12.1,2.3,13.5,7.1l31,101.1c0.2,0.6,0.3,1.1,0.3,1.6C405.2,415.9,397.6,419.6,392,419.6z"></path>
+            <path d="M346.4,377.7h28l-14-49.3L346.4,377.7z"></path>
+            <path d="M178.9,264c0-20.1,7-38.7,18.8-53.3c-17.1,0-33-5.4-46.1-14.5c-13.1,9.1-29,14.5-46.1,14.5c-4.7,0-8.5-3.8-8.5-8.5 s3.8-8.5,8.5-8.5c12,0,23.2-3.3,32.8-9.1c-11.6-12.5-19.3-28.6-21.2-46.5h-11.7c-4.7,0-8.5-3.8-8.5-8.5s3.8-8.5,8.5-8.5h37.6v-20.5 c0-4.7,3.8-8.5,8.5-8.5s8.5,3.8,8.5,8.5v20.5h37.6c4.7,0,8.5,3.8,8.5,8.5s-3.8,8.5-8.5,8.5H186c-1.9,17.9-9.6,34-21.2,46.5 c9.6,5.8,20.8,9.1,32.8,9.1c4.5,0,8.1,3.5,8.4,7.8c15.2-14.2,35.6-22.8,58-22.8h39.1v-35.6l50-35.7c3.9-2.8,6.3-7.4,6.3-12.2 c0-4.8-2.3-9.4-6.3-12.2L302.5,47c-4-26.6-26.9-47-54.6-47H55.2C24.7,0,0,24.7,0,55.2V248c0,30.4,24.7,55.2,55.2,55.2h123.7V264z"></path>
+            <path d="M151.6,174.2c9.3-9.6,15.5-22.1,17.4-35.9h-34.8C136,152.1,142.3,164.6,151.6,174.2z"></path>
+        </symbol>
+    </defs>
+</svg>
+<div class="mason mason--inner mason--type_page mason--customtype_default mason--noadmin mason--nosecure mason--ready mason--translate">
+
+    <section class="access">
+        <a class="access__anchor" name="header"></a>
+        <a class="access__link" href="#content">Skip to content ↓</a>
+    </section>
+
+
+    <section class="hero parent block-d js_hit hit">
+        <div class="hero__main abs_fill">
+            <ul class="hero__slideshow abs_fill list ecocycle" plx-type="topScreen" plx-speed=".5"
+                plx-watcher=".hero__main" style="transform: translate3d(0px, 0px, 0px);">
+
+                <li class="hero__slideshow__item abs_fill ecocycle__item">
+                    <div class="hero__slideshow__item__img abs_fill loaded"
+                         data-src="/_site/data/files/images/slideshow/1E272CB47304ADC514F4D0565D011745.JPG"
+                         data-type="bg">
+                        <div class="lazy-item"
+                             style="background-image: url('/_site/data/files/images/slideshow/1E272CB47304ADC514F4D0565D011745.JPG')"></div>
+                    </div>
+                </li>
+                <li class="hero__slideshow__item abs_fill ecocycle__item">
+                    <div class="hero__slideshow__item__img abs_fill loaded"
+                         data-src="/_site/data/files/images/slideshow/6D81E82FD7807CF6E539EA905A6DFBD6.jpg"
+                         data-type="bg">
+                        <div class="lazy-item"
+                             style="background-image: url('/_site/data/files/images/slideshow/6D81E82FD7807CF6E539EA905A6DFBD6.jpg')"></div>
+                    </div>
+                </li>
+                <li class="hero__slideshow__item abs_fill ecocycle__item">
+                    <div class="hero__slideshow__item__img abs_fill loaded"
+                         data-src="/_site/data/files/images/slideshow/18779E23E319974B93A5CD511C1DCDED.jpg"
+                         data-type="bg">
+                        <div class="lazy-item"
+                             style="background-image: url('/_site/data/files/images/slideshow/18779E23E319974B93A5CD511C1DCDED.jpg')"></div>
+                    </div>
+                </li>
+                <li class="hero__slideshow__item abs_fill ecocycle__item">
+                    <div class="hero__slideshow__item__img abs_fill loaded"
+                         data-src="/_site/data/files/images/slideshow/A71323FE3ECFD4C63BC08691A8D1C1B9.jpeg"
+                         data-type="bg">
+                        <div class="lazy-item"
+                             style="background-image: url('/_site/data/files/images/slideshow/A71323FE3ECFD4C63BC08691A8D1C1B9.jpeg')"></div>
+                    </div>
+                </li>
+                <li class="hero__slideshow__item abs_fill ecocycle__item active">
+                    <div class="hero__slideshow__item__img abs_fill loaded"
+                         data-src="/_site/data/files/images/slideshow/38384B6CBDC56E253A5ACF86A77EBBB5.jpg"
+                         data-type="bg">
+                        <div class="lazy-item"
+                             style="background-image: url('/_site/data/files/images/slideshow/38384B6CBDC56E253A5ACF86A77EBBB5.jpg')"></div>
+                    </div>
+                </li>
+                <li class="hero__slideshow__item abs_fill ecocycle__item">
+                    <div class="hero__slideshow__item__img abs_fill loaded"
+                         data-src="/_site/data/files/images/slideshow/CDE02961DE7D5E8583CE69796A45DFC7.jpg"
+                         data-type="bg">
+                        <div class="lazy-item"
+                             style="background-image: url('/_site/data/files/images/slideshow/CDE02961DE7D5E8583CE69796A45DFC7.jpg')"></div>
+                    </div>
+                </li>
+                <li class="hero__slideshow__item abs_fill ecocycle__item">
+                    <div class="hero__slideshow__item__img abs_fill loaded"
+                         data-src="/_site/data/files/images/slideshow/2A558AC2F400B4A847BFC4742F84629E.jpg"
+                         data-type="bg">
+                        <div class="lazy-item"
+                             style="background-image: url('/_site/data/files/images/slideshow/2A558AC2F400B4A847BFC4742F84629E.jpg')"></div>
+                    </div>
+                </li>
+                <li class="hero__slideshow__item abs_fill ecocycle__item">
+                    <div class="hero__slideshow__item__img abs_fill loaded"
+                         data-src="/_site/data/files/images/slideshow/AE0FE658FDBA4D248AC9BA391F457668.jpg"
+                         data-type="bg">
+                        <div class="lazy-item"
+                             style="background-image: url('/_site/data/files/images/slideshow/AE0FE658FDBA4D248AC9BA391F457668.jpg')"></div>
+                    </div>
+                </li>
+                <li class="hero__slideshow__item abs_fill ecocycle__item">
+                    <div class="hero__slideshow__item__img abs_fill loaded"
+                         data-src="/_site/data/files/images/slideshow/94BBFC43DC945E7D48E71AA3C9CE4390.jpg"
+                         data-type="bg">
+                        <div class="lazy-item"
+                             style="background-image: url('/_site/data/files/images/slideshow/94BBFC43DC945E7D48E71AA3C9CE4390.jpg')"></div>
+                    </div>
+                </li>
+                <li class="hero__slideshow__item abs_fill ecocycle__item">
+                    <div class="hero__slideshow__item__img abs_fill loaded"
+                         data-src="/_site/data/files/images/slideshow/AD05BE77EAAF3CBB28BCB3153499F1A0.jpg"
+                         data-type="bg">
+                        <div class="lazy-item"
+                             style="background-image: url('/_site/data/files/images/slideshow/AD05BE77EAAF3CBB28BCB3153499F1A0.jpg')"></div>
+                    </div>
+                </li>
+            </ul>
+        </div>
+        <div class="hero__overlay parent" style="background-color: #af1130;">
+            <a class="hero__overlay__logo a_block js_fadeup" href="https://www.springhillcatholic.co.uk/">
+
+                <img src="index_files/AC7FA68B308543692E4FD1F5AC3C8436.png" alt="Logo">
+
+                <h1 class="fs65">Springhill Parents' Association</h1>
+            </a>
+
+        </div>
+
+    </section>
+
+    <main class="main parent block-l" id="main">
+        <div class="main__center ms-center">
+
+            <div class="content content--page">
+                <a class="content__anchor" name="content"></a>
+                <h1 class="content__title" id="itemTitle">Welcome to Springhill Parents and Friends Association</h1>
+                <div class="content__region"><h3><em>"All parents and carers are members of the Parents and Friends
+                    Association"</em></h3>
+
+                    <p><h4><em></em><strong>We are dedicated to advancing the education and improving wellbeing of students at our school.</strong></em></h4> </p>
+
+                    <p>Our mission focuses on:
+
+                    <p><strong>   Building Effective Relationships:</strong> Developing strong partnerships between staff, parents, and the local community of the school.</p>
+                    <p><strong>Supporting Educational Activities:</strong>  Hosting events to raise funds and provide resources to enhance the school's educational environment.</p>
+
+                    <p>Join us in our efforts to create a supportive network that empowers every child with the opportunities to excel. Together, we can make a significant impact.</p>
+
+                    <h4><em><strong>Who are we?</strong></h4></em>
+
+                    <p>Our core team of working parents, with the following roles:</p>
+                    <p><strong>Committee Chair:&nbsp;</strong>Emma Bailey</p>
+
+                    <p><strong>Deputy Chair: </strong>Rosie Malhao</p>
+
+                   <p><strong>Treasurer:&nbsp;</strong>&nbsp;Caroline Mariner</p>
+
+
+                <h4><em><strong>Current Vacanies</strong></h4></em></p>
+                    <p>If you have the skills and can offer a few hours of your time a month to volunteer for one of the below posts, get in touch at <a href="mailto:someone@yoursite.com">aspringhillpa@gmail.co.uk</a></p>
+                    <p><strong>Secretary: </strong></p>
+                    <p>You: </p>
+
+                    <ul>
+                        <li>Attend core PA meetings to understand upcoming events, key dates and what is needed from volunteers.</li>
+						<li>Take minutes at PA meetings and distribute them to the parent body.</li>
+						<li>Support the Chair and Deputy Chair in creating PA meeting Agendas.</li>
+                    </ul>
+
+                    <p><strong>Marketing Officer: </strong></p>
+                    <p>You: </p>
+
+                    <ul>
+                        <li>Attend core PA meetings to understand upcoming events, key dates and what is needed from volunteers.</li>
+						<li>Communicate this key information in an engaging way via the PA social media tools and PA newsletter, to encourage volunteers and parent body participation.</li>
+                        <li>Use your creative flaire to generate eye catching event posters that pull in volunteers from the parent body.</li>
+                    </ul>
+
+                    <br>
+
+					<p><b>PA Address:</b></p>
+                    <div style="margin-left: 30px;">
+                        <p style="margin-bottom:0;">C/o Springhill Catholic Primary School</p>
+                        <p style="margin-bottom:0; margin-top: 0;">Milton Road</p>
+                        <p style="margin-bottom:0; margin-top: 0;">Southampton</p>
+                        <p style="margin-bottom:0; margin-top: 0;">SO15 2HW</p>
+                    </div>
+                    <p><b>Registered Charity Number 1147247.</b></p>
+
+                    <p>&nbsp;</p>
+
+        </div>
+    </main>
+
+
+    <footer class="footer parent block-d center">
+        <p>
+            <span>©2024 Springhill Catholic Primary School  <span class="footer__sep"></span></span>
+        </p>
+    </footer>
+
+    <a class="scrollup f_ucase" href="#header">
+        <svg class="svg-inline--fa fa-angle-up fa-w-10" aria-hidden="true" focusable="false" data-prefix="far"
+             data-icon="angle-up" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" data-fa-i2svg="">
+            <path fill="currentColor"
+                  d="M168.5 164.2l148 146.8c4.7 4.7 4.7 12.3 0 17l-19.8 19.8c-4.7 4.7-12.3 4.7-17 0L160 229.3 40.3 347.8c-4.7 4.7-12.3 4.7-17 0L3.5 328c-4.7-4.7-4.7-12.3 0-17l148-146.8c4.7-4.7 12.3-4.7 17 0z"></path>
+        </svg><!-- <i class="far fa-angle-up"></i> -->
+        <span>Top</span>
+    </a>
+
+
+</div>
+
+<script src="index_files/modernizr-custom.min.js"></script>
+<script src="index_files/ecocycle.v2.min.js"></script>
+<script src="index_files/scripts.min.js"></script>
+
+<script>
+    (function () {
+
+        noAdmin();
+
+    })();
+</script>
+
+
+<script>
+    $(document).ready(function () {
+        $('.cookie_information__icon, .cookie_information__close').on('click', function () {
+            $('.cookie_information').toggleClass('cookie_information--active');
+        });
+
+        if ($.cookie.allowed()) {
+            $('.cookie_information__icon_container').addClass('cookie_information__icon_container--hidden');
+            $('.cookie_information').removeClass('cookie_information--active');
+        }
+
+        $(document).on('click', '.cookie_information__button', function () {
+            var strType = $(this).data('type');
+            if (strType === 'settings') {
+                openCookieSettings();
+            } else {
+                saveCookiePreferences(strType, '');
+            }
+        });
+        if (!$('.cookie_ui').length) {
+            $('body').append($('<div>', {
+                class: 'cookie_ui'
+            }));
+        }
+
+        var openCookieSettings = function () {
+            $('body').e4eDialog({
+                diagTitle: 'Advanced Cookie Settings',
+                contentClass: 'clublist--add',
+                width: '500px',
+                height: '90%',
+                source: '/privacy-cookies/cookie-popup.asp',
+                bind: false,
+                appendTo: '.cookie_ui',
+                buttons: [{
+                    id: 'primary',
+                    label: 'Save',
+                    fn: function () {
+                        var arrAllowedItems = [];
+                        var strType = 'allow';
+                        arrAllowedItems.push('core');
+                        if ($('#cookie--targeting').is(':checked')) arrAllowedItems.push('targeting');
+                        if ($('#cookie--functional').is(':checked')) arrAllowedItems.push('functional');
+                        if ($('#cookie--performance').is(':checked')) arrAllowedItems.push('performance');
+                        if (!arrAllowedItems.length) strType = 'deny';
+                        if (!arrAllowedItems.length === 4) arrAllowedItems = 'all';
+                        saveCookiePreferences(strType, arrAllowedItems.join(','));
+                        this.close();
+                    }
+                }, {
+                    id: 'close',
+
+                    label: 'Revoke Cookies',
+
+                    fn: function () {
+                        saveCookiePreferences('deny', '');
+                        this.close();
+                    }
+                }]
+            });
+        }
+        var saveCookiePreferences = function (strType, strCSVAllowedItems) {
+            if (!strType) return;
+            if (!strCSVAllowedItems) strCSVAllowedItems = 'all';
+            $.ajax({
+                'url': '/privacy-cookies/json.asp?action=updateUserPreferances',
+                data: {
+                    preference: strType,
+                    allowItems: strCSVAllowedItems === 'all' ? '' : strCSVAllowedItems
+                },
+                success: function (data) {
+                    var arrCSVAllowedItems = strCSVAllowedItems.split(',');
+                    if (data) {
+                        if ('allow' === strType && (strCSVAllowedItems === 'all' || (strCSVAllowedItems.indexOf('core') > -1 && strCSVAllowedItems.indexOf('targeting') > -1) && strCSVAllowedItems.indexOf('functional') > -1 && strCSVAllowedItems.indexOf('performance') > -1)) {
+                            if ($(document).find('.no__cookies').length > 0) {
+                                $(document).find('.no__cookies').each(function () {
+                                    if ($(this).data('replacement')) {
+                                        var replacement = $(this).data('replacement')
+                                        $(this).replaceWith(replacement);
+                                    } else {
+                                        window.location.reload();
+                                    }
+                                });
+                            }
+                            $('.cookie_information__icon_container').addClass('cookie_information__icon_container--hidden');
+                            $('.cookie_information').removeClass('cookie_information--active');
+                            $('.cookie_information__info').find('article').replaceWith(data);
+                        } else {
+                            $('.cookie_information__info').find('article').replaceWith(data);
+                            if (strType === 'dontSave' || strType === 'save') {
+                                $('.cookie_information').removeClass('cookie_information--active');
+                            } else if (strType === 'deny') {
+                                $('.cookie_information').addClass('cookie_information--active');
+                            } else {
+                                $('.cookie_information').removeClass('cookie_information--active');
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    });
+</script>
+<script src="index_files/mason.min.js"></script>
+<script>
+    var loadedJS = {
+        "/_includes/font-awesome/5.7.1/js/fontawesome-all.min.js": true,
+        "/_includes/font-awesome/5.7.1/js/fa-v4-shims.min.js": true,
+        "/admin/_includes/js/jquery/jquery.js": true,
+        "/admin/_includes/js/jquery/jquery.prefilter.js": true,
+        "/admin/_includes/js/jquery/jquery.query.js": true,
+        "/admin/_includes/js/jquery/js.cookie.js": true,
+        "/_includes/editor/template-javascript.asp": true,
+        "/admin/_includes/js/functions/minified/functions.login.new.asp": true,
+        "/admin/_includes/js/modernizr.js": true,
+        "/_site/js/modernizr-custom.min.js": true,
+        "/_site/js/ecocycle.v2.min.js": true,
+        "/_site/js/scripts.min.js": true,
+        "/_includes/js/mason.min.js": true
+    };
+    var loadedCSS = {
+        "/_includes/font-awesome/5.7.1/css/fa-web-font.css": true,
+        "/_site/css/main.css": true,
+        "/_site/css/content.css": true,
+        "/_includes/css/content-blocks.css": true,
+        "/_includes/css/cookie-colour.asp": true,
+        "/_includes/css/cookies.css": true,
+        "/_includes/css/cookies.advanced.css": true,
+        "/_includes/css/overlord.css": true,
+        "/_includes/css/templates.css": true,
+        "/_site/css/attachments.css": true,
+        "/_site/css/templates.css": true
+    };
+</script>
+<div id="goog-gt-tt" class="VIpgJd-yAWNEb-L7lbkb skiptranslate"
+     style="border-radius: 12px; margin: 0 0 0 -23px; padding: 0; font-family: 'Google Sans', Arial, sans-serif;"
+     data-id="">
+    <div id="goog-gt-vt" class="VIpgJd-yAWNEb-hvhgNd">
+        <div class=" VIpgJd-yAWNEb-hvhgNd-l4eHX-i3jM8c"><img src="index_files/24px.svg" width="24" height="24" alt="">
+        </div>
+        <div class=" VIpgJd-yAWNEb-hvhgNd-k77Iif-i3jM8c">
+            <div class="VIpgJd-yAWNEb-hvhgNd-IuizWc" dir="ltr">Original text</div>
+            <div id="goog-gt-original-text" class="VIpgJd-yAWNEb-nVMfcd-fmcmS VIpgJd-yAWNEb-hvhgNd-axAV1"></div>
+        </div>
+        <div class="VIpgJd-yAWNEb-hvhgNd-N7Eqid ltr">
+            <div class="VIpgJd-yAWNEb-hvhgNd-N7Eqid-B7I4Od ltr" dir="ltr">
+                <div class="VIpgJd-yAWNEb-hvhgNd-UTujCb">Rate this translation</div>
+                <div class="VIpgJd-yAWNEb-hvhgNd-eO9mKe">Your feedback will be used to help improve Google Translate
+                </div>
+            </div>
+            <div class="VIpgJd-yAWNEb-hvhgNd-xgov5 ltr">
+                <button id="goog-gt-thumbUpButton" type="button" class="VIpgJd-yAWNEb-hvhgNd-bgm6sf"
+                        title="Good translation" aria-label="Good translation" aria-pressed="false"><span
+                        id="goog-gt-thumbUpIcon"><svg width="24" height="24" viewBox="0 0 24 24" focusable="false"
+                                                      class="VIpgJd-yAWNEb-hvhgNd-THI6Vb NMm5M"><path
+                        d="M21 7h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 0S7.08 6.85 7 7H2v13h16c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73V9c0-1.1-.9-2-2-2zM7 18H4V9h3v9zm14-7l-3 7H9V8l4.34-4.34L12 9h9v2z"></path></svg></span><span
+                        id="goog-gt-thumbUpIconFilled"><svg width="24" height="24" viewBox="0 0 24 24" focusable="false"
+                                                            class="VIpgJd-yAWNEb-hvhgNd-THI6Vb NMm5M"><path
+                        d="M21 7h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 0S7.08 6.85 7 7v13h11c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73V9c0-1.1-.9-2-2-2zM5 7H1v13h4V7z"></path></svg></span>
+                </button>
+                <button id="goog-gt-thumbDownButton" type="button" class="VIpgJd-yAWNEb-hvhgNd-bgm6sf"
+                        title="Poor translation" aria-label="Poor translation" aria-pressed="false"><span
+                        id="goog-gt-thumbDownIcon"><svg width="24" height="24" viewBox="0 0 24 24" focusable="false"
+                                                        class="VIpgJd-yAWNEb-hvhgNd-THI6Vb NMm5M"><path
+                        d="M3 17h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 24s7.09-6.85 7.17-7h5V4H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2zM17 6h3v9h-3V6zM3 13l3-7h9v10l-4.34 4.34L12 15H3v-2z"></path></svg></span><span
+                        id="goog-gt-thumbDownIconFilled"><svg width="24" height="24" viewBox="0 0 24 24"
+                                                              focusable="false"
+                                                              class="VIpgJd-yAWNEb-hvhgNd-THI6Vb NMm5M"><path
+                        d="M3 17h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 24s7.09-6.85 7.17-7V4H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2zm16 0h4V4h-4v13z"></path></svg></span>
+                </button>
+            </div>
+        </div>
+        <div id="goog-gt-votingHiddenPane" class="VIpgJd-yAWNEb-hvhgNd-aXYTce">
+            <form id="goog-gt-votingForm" action="//translate.googleapis.com/translate_voting?client=te" method="post"
+                  target="votingFrame" class="VIpgJd-yAWNEb-hvhgNd-aXYTce"><input type="text" name="sl"
+                                                                                  id="goog-gt-votingInputSrcLang"><input
+                    type="text" name="tl" id="goog-gt-votingInputTrgLang"><input type="text" name="query"
+                                                                                 id="goog-gt-votingInputSrcText"><input
+                    type="text" name="gtrans" id="goog-gt-votingInputTrgText"><input type="text" name="vote"
+                                                                                     id="goog-gt-votingInputVote">
+            </form>
+            <iframe name="votingFrame" frameborder="0"></iframe>
+        </div>
+    </div>
+</div>
+
+
+<div class="VIpgJd-ZVi9od-aZ2wEe-wOHMyf">
+    <div class="VIpgJd-ZVi9od-aZ2wEe-OiiCO">
+        <svg xmlns="http://www.w3.org/2000/svg" class="VIpgJd-ZVi9od-aZ2wEe" width="96px" height="96px"
+             viewBox="0 0 66 66">
+            <circle class="VIpgJd-ZVi9od-aZ2wEe-Jt5cK" fill="none" stroke-width="6" stroke-linecap="round" cx="33"
+                    cy="33" r="30"></circle>
+        </svg>
+    </div>
+</div>
+<div class="cookie_ui"></div>
+</body>
+</html>
